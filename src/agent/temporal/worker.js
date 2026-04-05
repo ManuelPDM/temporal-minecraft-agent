@@ -28,9 +28,9 @@ export async function createAndRunWorker(agent, settings) {
     const worker = await Worker.create({
         connection: workerConnection,
         namespace: settings.temporal_namespace,
-        // workflowsPath is bundled by Temporal's esbuild wrapper at startup.
-        // It must be an absolute path to the workflow entry module.
-        workflowsPath: path.join(__dirname, 'workflows', 'agent-lifecycle.js'),
+        // workflowsPath is the single entrypoint bundled by Temporal's webpack wrapper.
+        // All workflows that may run on this task queue must be exported from this file.
+        workflowsPath: path.join(__dirname, 'workflows', 'index.js'),
         activities: createActivities(agent),
         taskQueue,
     });
