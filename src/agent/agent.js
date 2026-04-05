@@ -93,6 +93,10 @@ export class Agent {
         this.bot.on('login', () => {
             console.log(this.name, 'logged in!');
             serverProxy.login();
+
+            if (this.temporalWorkflowHandle) {
+                this.temporalWorkflowHandle.signal('agentConnected').catch(() => {});
+            }
             
             // --- ANTI-NAN CRASH SAFEGUARD ---
             let lastGoodState = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }; // Added yaw and pitch

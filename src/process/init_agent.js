@@ -67,13 +67,16 @@ const argv = yargs(args)
                 console.log(`[Temporal] Terminated previous lifecycle: ${workflowId}`);
             } catch (_) { /* no previous run — that's fine */ }
 
-            const handle = await client.workflow.start('AgentLifecycleWorkflow', {
+            const handle = await client.workflow.start('MindcraftAgentWorkflow', {
                 taskQueue,
                 workflowId,
-                args: [{ agentName: agent.name, sessionCount: 0 }],
+                args: [{ 
+                    agentName: agent.name, 
+                    initialGoal: settings.task ? { description: settings.task } : argv.init_message 
+                }],
             });
             agent.temporalWorkflowHandle = handle;
-            console.log(`[Temporal] Lifecycle workflow started: ${workflowId}`);
+            console.log(`[Temporal] Agent workflow started: ${workflowId}`);
 
             process.on('beforeExit', () => worker.shutdown());
         }
