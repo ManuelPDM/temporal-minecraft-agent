@@ -9,7 +9,7 @@ import {
 } from '@temporalio/workflow';
 
 const { executeLLMGoalIteration, executeActionActivity, executePassiveThinking, notifyGoalComplete } = proxyActivities({
-    startToCloseTimeout: '5 minutes',
+    startToCloseTimeout: '10 minutes',
     heartbeatTimeout: '60 seconds',
     retry: {
         maximumAttempts: 3,
@@ -75,9 +75,9 @@ export async function GoalPursuitWorkflow(input) {
         const result = await executeLLMGoalIteration(currentGoal.description);
         lastUsedCommand = result.used_command;
         if (result.command) {
-            lastCommand = result.command;
+            lastCommand = result.command_name ? result.command_name : "Action";
             // Now run the command as a separate tracked activity!
-            await executeActionActivity(result.command);
+            await executeActionActivity(result.command, result.command_name);
         }
         iterationCount++;
 

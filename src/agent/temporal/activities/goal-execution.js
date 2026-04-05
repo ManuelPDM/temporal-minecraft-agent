@@ -30,14 +30,26 @@ export function createGoalExecutionActivities(agent) {
                     `Your next response MUST contain a command with this syntax: !commandName. Respond:`;
                 // max_responses=1, execute_commands=false
                 const command = await agent.handleMessage('system', msg, 1, false);
-                return { used_command: !!command, command: typeof command === 'string' ? command : null };
+                
+                let command_name = null;
+                if (typeof command === 'string') {
+                    const match = command.match(/!(\w+)/);
+                    if (match) command_name = match[0];
+                }
+
+                return { 
+                    used_command: !!command, 
+                    command: typeof command === 'string' ? command : null,
+                    command_name: command_name
+                };
             } finally {
                 clearInterval(heartbeatInterval);
             }
         },
 
-        async executeActionActivity(command) {
-            const heartbeatInterval = setInterval(() => heartbeat(`Executing ${command}`), 10_000);
+        async executeActionActivity(command, command_name) {
+            const heartbeatLabel = command_name ? `Executing ${command_name}` : 'Executing Action';
+            const heartbeatInterval = setInterval(() => heartbeat(heartbeatLabel), 10_000);
             try {
                 agent._currentCommand = command;
                 let execute_res = await executeCommand(agent, command);
