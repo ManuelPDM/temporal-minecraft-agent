@@ -75,8 +75,9 @@ export class SelfPrompter {
         if (this.agent.temporalWorkflowHandle) {
             this._goalPaused = false;
             this.interrupt = false; // ensure any stale interrupt flag is cleared before Temporal takes over
+            const goalDescription = this.agent.task && this.agent.task.goal ? this.agent.task.goal : this.prompt;
             await this.agent.temporalWorkflowHandle
-                .signal('startGoalPursuit', { goalId: 'self_prompt', description: this.prompt })
+                .signal('startGoalPursuit', { goalId: 'self_prompt', description: goalDescription })
                 .catch(err => console.warn('[Temporal] startGoalPursuit signal failed:', err));
             return;
         }

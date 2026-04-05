@@ -1,4 +1,5 @@
 import { heartbeat } from '@temporalio/activity';
+import { executeCommand } from '../../commands/index.js';
 
 export function createGoalExecutionActivities(agent) {
     return {
@@ -27,13 +28,39 @@ export function createGoalExecutionActivities(agent) {
                 const msg =
                     `You are self-prompting with the goal: '${goalDescription}'. ` +
                     `Your next response MUST contain a command with this syntax: !commandName. Respond:`;
-                const used_command = await agent.handleMessage('system', msg, -1);
-                const command = agent._lastExecutedCommand || null;
-                return { used_command: !!used_command, command };
+                // max_responses=1, execute_commands=false
+                const command = await agent.handleMessage('system', msg, 1, false);
+                return { used_command: !!command, command: typeof command === 'string' ? command : null };
             } finally {
                 clearInterval(heartbeatInterval);
             }
         },
+
+        async executeActionActivity(command) {
+            const heartbeatInterval = setInterval(() => heartbeat(`Executing ${command}`), 10_000);
+            try {
+                agent._currentCommand = command;
+                let execute_res = await executeCommand(agent, command);
+                agent._currentCommand = null;
+                agent._lastExecutedCommand = command;
+
+                if (execute_res) {
+                    agent.history.add('system', execute_res);
+                    agent.history.save();
+                }
+                return execute_res || "Action complete.";
+            } catch (err) {
+                agent._currentCommand = null;
+                console.error('[Temporal] Action execution failed:', err);
+                const errorMsg = `Command failed: ${err.message}`;
+                agent.history.add('system', errorMsg);
+                agent.history.save();
+                return errorMsg;
+            } finally {
+                clearInterval(heartbeatInterval);
+            }
+        },
+
 
         // Called when GoalPursuit exits naturally (3 no-command responses).
         // Resets the self_prompter so it doesn't linger in a zombie loop_active=true state.

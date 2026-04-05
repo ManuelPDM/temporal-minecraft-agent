@@ -316,7 +316,7 @@ export class Agent {
         convoManager.endAllConversations();
     }
 
-    handleMessage(source, message, max_responses=null) {
+    handleMessage(source, message, max_responses=null, execute_commands=true) {
         this._msgQueueDepth++;
         // Flat mutex: each call races to claim the lock, runs when it gets it,
         // then releases. This avoids an ever-growing promise chain that leaks
@@ -326,12 +326,12 @@ export class Agent {
         this._msgQueue = new Promise(resolve => { release = resolve; });
         const resultPromise = ticket
             .catch(() => {})
-            .then(() => this._handleMessageImpl(source, message, max_responses))
+            .then(() => this._handleMessageImpl(source, message, max_responses, execute_commands))
             .finally(() => { this._msgQueueDepth--; release(); });
         return resultPromise;
     }
 
-    async _handleMessageImpl(source, message, max_responses=null) {
+    async _handleMessageImpl(source, message, max_responses=null, execute_commands=true) {
         this._lastExecutedCommand = null;
         await this.checkTaskDone();
         if (!source || !message) {
@@ -435,6 +435,10 @@ export class Agent {
                         this.routeResponse(source, pre_message);
                 }
 
+                if (!execute_commands) {
+                    return res; // Return the command string for external execution
+                }
+
                 this._currentCommand = res; // visible to Temporal heartbeat while running
                 let execute_res = await executeCommand(this, res);
                 this._currentCommand = null;
@@ -456,6 +460,8 @@ export class Agent {
             
             this.history.save();
         }
+
+        if (!execute_commands) return used_command ? this._lastExecutedCommand : null;
 
         return used_command;
     }
