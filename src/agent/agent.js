@@ -663,7 +663,7 @@ export class Agent {
     }
     
     async checkTaskDone() {
-        if (this.task.data) {
+        if (this.task && this.task.data) {
             let res = this.task.isDone();
             if (res) {
                 await this.history.add('system', `Task ended with score : ${res.score}`);

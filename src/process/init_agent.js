@@ -57,7 +57,16 @@ const argv = yargs(args)
             agent.temporalWorker = worker;
             agent.temporalClient = client;
 
-            const workflowId = `agent-lifecycle-${agent.name}-${Date.now()}`;
+            // Use a stable workflow ID so we can reliably terminate the previous session.
+            // Terminating the lifecycle also cascades to any running GoalPursuit children
+            // (PARENT_CLOSE_POLICY_TERMINATE), preventing stale activities from executing
+            // on the new worker before the agent is initialized.
+            const workflowId = `agent-lifecycle-${agent.name}`;
+            try {
+                await client.workflow.getHandle(workflowId).terminate('agent restarted');
+                console.log(`[Temporal] Terminated previous lifecycle: ${workflowId}`);
+            } catch (_) { /* no previous run — that's fine */ }
+
             const handle = await client.workflow.start('AgentLifecycleWorkflow', {
                 taskQueue,
                 workflowId,

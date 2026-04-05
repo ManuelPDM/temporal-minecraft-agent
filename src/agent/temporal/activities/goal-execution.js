@@ -5,6 +5,17 @@ export function createGoalExecutionActivities(agent) {
         // Mirror of SelfPrompter.startLoop()'s inner body — one iteration per call.
         // Returns { used_command, command, llm_response } for Temporal UI visibility.
         async executeLLMGoalIteration(goalDescription) {
+            // Wait until the agent has fully spawned before executing.
+            // This guards against stale activities from previous sessions retrying
+            // on the new worker before agent.start() has finished.
+            let waitedMs = 0;
+            while (!agent.bot || !agent.bot.entity) {
+                if (waitedMs >= 90_000) throw new Error('Agent did not spawn within 90s — aborting activity');
+                heartbeat({ phase: 'waiting_for_spawn', waitedMs });
+                await new Promise(r => setTimeout(r, 1_000));
+                waitedMs += 1_000;
+            }
+
             const heartbeatInterval = setInterval(() => {
                 const current = agent._currentCommand || null;
                 heartbeat(current
