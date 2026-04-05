@@ -45,10 +45,12 @@ const argv = yargs(args)
         console.log('Starting agent');
         const agent = new Agent();
         serverProxy.setAgent(agent);
-        await agent.start(argv.load_memory, argv.init_message, argv.count_id);
 
-        // Start Temporal worker + lifecycle workflow (guarded by settings flag)
+        // Start Temporal BEFORE agent.start() so that the workflow handle is ready
+        // when the bot's login/spawn events fire (which happen during agent.start()).
+        // agent.name is pre-set from argv.name so the task queue name is known.
         if (settings.temporal_enabled) {
+            agent.name = argv.name; // set early; agent.start() will re-confirm from profile
             const { createAndRunWorker } = await import('../agent/temporal/worker.js');
             const { worker, client, taskQueue } = await createAndRunWorker(agent, settings);
 
@@ -66,6 +68,8 @@ const argv = yargs(args)
 
             process.on('beforeExit', () => worker.shutdown());
         }
+
+        await agent.start(argv.load_memory, argv.init_message, argv.count_id);
     } catch (error) {
         console.error('Failed to start agent process:');
         console.error(error.message);

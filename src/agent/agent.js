@@ -327,6 +327,7 @@ export class Agent {
     }
 
     async _handleMessageImpl(source, message, max_responses=null) {
+        this._lastExecutedCommand = null;
         await this.checkTaskDone();
         if (!source || !message) {
             console.warn('Received empty message from', source);
@@ -429,7 +430,10 @@ export class Agent {
                         this.routeResponse(source, pre_message);
                 }
 
+                this._currentCommand = res; // visible to Temporal heartbeat while running
                 let execute_res = await executeCommand(this, res);
+                this._currentCommand = null;
+                this._lastExecutedCommand = res;
 
                 console.log('Agent executed:', command_name, 'and got:', execute_res);
                 used_command = true;

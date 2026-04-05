@@ -144,6 +144,7 @@ export async function AgentLifecycleWorkflow(params) {
                     iterationCount: 0,
                     noCommandCount: 0,
                     cooldownMs: 2000,
+                    passiveThinkingInterval: 10,
                 }],
             });
             activeGoalWorkflowId = goalWfId;

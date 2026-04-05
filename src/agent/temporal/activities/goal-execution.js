@@ -3,15 +3,22 @@ import { heartbeat } from '@temporalio/activity';
 export function createGoalExecutionActivities(agent) {
     return {
         // Mirror of SelfPrompter.startLoop()'s inner body — one iteration per call.
-        // Returns { used_command: boolean }.
+        // Returns { used_command, command, llm_response } for Temporal UI visibility.
         async executeLLMGoalIteration(goalDescription) {
-            const heartbeatInterval = setInterval(() => heartbeat('LLM iteration in progress'), 30_000);
+            const heartbeatInterval = setInterval(() => {
+                const current = agent._currentCommand || null;
+                heartbeat(current
+                    ? { phase: 'executing', command: current }
+                    : { phase: 'waiting_for_llm', goal: goalDescription }
+                );
+            }, 10_000);
             try {
                 const msg =
                     `You are self-prompting with the goal: '${goalDescription}'. ` +
                     `Your next response MUST contain a command with this syntax: !commandName. Respond:`;
                 const used_command = await agent.handleMessage('system', msg, -1);
-                return { used_command: !!used_command };
+                const command = agent._lastExecutedCommand || null;
+                return { used_command: !!used_command, command };
             } finally {
                 clearInterval(heartbeatInterval);
             }

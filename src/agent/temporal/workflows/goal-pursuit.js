@@ -46,6 +46,7 @@ export async function GoalPursuitWorkflow(input) {
     let paused = false;
     let interrupted = false;
     let lastUsedCommand = false;
+    let lastCommand = null;
     let passiveThinkingCounter = 0;
 
     setHandler(interruptSignal, () => { interrupted = true; });
@@ -60,6 +61,7 @@ export async function GoalPursuitWorkflow(input) {
         iterationCount,
         noCommandCount,
         lastUsedCommand,
+        lastCommand,
     }));
 
     while (!interrupted && noCommandCount < MAX_NO_COMMAND) {
@@ -72,6 +74,7 @@ export async function GoalPursuitWorkflow(input) {
         // Execute one LLM iteration (the activity handles the actual handleMessage call)
         const result = await executeLLMGoalIteration(currentGoal.description);
         lastUsedCommand = result.used_command;
+        if (result.command) lastCommand = result.command;
         iterationCount++;
 
         if (result.used_command) {
