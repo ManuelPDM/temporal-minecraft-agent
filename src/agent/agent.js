@@ -318,11 +318,16 @@ export class Agent {
 
     handleMessage(source, message, max_responses=null) {
         this._msgQueueDepth++;
-        const resultPromise = this._msgQueue
+        // Flat mutex: each call races to claim the lock, runs when it gets it,
+        // then releases. This avoids an ever-growing promise chain that leaks
+        // memory across hundreds of LLM iterations.
+        let release;
+        const ticket = this._msgQueue;
+        this._msgQueue = new Promise(resolve => { release = resolve; });
+        const resultPromise = ticket
             .catch(() => {})
             .then(() => this._handleMessageImpl(source, message, max_responses))
-            .finally(() => { this._msgQueueDepth--; });
-        this._msgQueue = resultPromise.catch(() => {});
+            .finally(() => { this._msgQueueDepth--; release(); });
         return resultPromise;
     }
 
@@ -457,7 +462,7 @@ export class Agent {
 
     async handlePassiveThinking() {
         if (this._msgQueueDepth > 0) return;
-        this._msgQueue = this._msgQueue.then(() =>
+        this._msgQueue.then(() =>
             this.prompter.promptPassiveThinking(this.history.getHistory(), this.history.memory)
                 .then(({ memoryUpdate, turnsToRemove }) => {
                     if (memoryUpdate) this.history.memory = memoryUpdate;

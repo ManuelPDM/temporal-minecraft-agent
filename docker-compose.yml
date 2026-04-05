@@ -4,6 +4,7 @@ services:
     environment:
       SETTINGS_JSON: |
         {"auto_open_ui": false}
+      NODE_OPTIONS: "--max-old-space-size=4096"
     volumes:
       - ./settings.js:/app/settings.js
       - ./keys.json:/app/keys.json
