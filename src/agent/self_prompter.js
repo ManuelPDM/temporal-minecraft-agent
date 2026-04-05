@@ -59,6 +59,7 @@ export class SelfPrompter {
             // If Temporal's GoalPursuit is paused (e.g. mode was running), resume it
             if (this.agent.temporalWorkflowHandle && this._goalPaused) {
                 this._goalPaused = false;
+                this.interrupt = false; // clear any stale interrupt before resuming
                 await this.agent.temporalWorkflowHandle
                     .signal('resumeGoalPursuit')
                     .catch(err => console.warn('[Temporal] resumeGoalPursuit signal failed:', err));
@@ -73,6 +74,7 @@ export class SelfPrompter {
         // Delegate to Temporal GoalPursuitWorkflow when available
         if (this.agent.temporalWorkflowHandle) {
             this._goalPaused = false;
+            this.interrupt = false; // ensure any stale interrupt flag is cleared before Temporal takes over
             await this.agent.temporalWorkflowHandle
                 .signal('startGoalPursuit', { goalId: 'self_prompt', description: this.prompt })
                 .catch(err => console.warn('[Temporal] startGoalPursuit signal failed:', err));
@@ -147,13 +149,19 @@ export class SelfPrompter {
         if (this.agent.temporalWorkflowHandle) {
             // Pause the GoalPursuit rather than killing it — prevents a new child
             // from being spawned on every mode interrupt (item_collecting, hunting, etc.)
-            if (this.loop_active && !this._goalPaused) {
+            const needsSignal = this.loop_active && !this._goalPaused;
+            if (needsSignal) {
                 this._goalPaused = true;
+            }
+            // Clear interrupt BEFORE the async signal send so that the running
+            // executeLLMGoalIteration activity's handleMessage call is never
+            // interrupted by the interrupt flag during this await window.
+            this.interrupt = false;
+            if (needsSignal) {
                 await this.agent.temporalWorkflowHandle
                     .signal('pauseGoalPursuit')
                     .catch(err => console.warn('[Temporal] pauseGoalPursuit signal failed:', err));
             }
-            this.interrupt = false;
             return;
         }
         while (this.loop_active) {
