@@ -586,6 +586,9 @@ export class Agent {
         this.bot.on('death', () => {
             this.actions.cancelResume();
             this.actions.stop();
+            if (this.self_prompter.isActive()) {
+                this.self_prompter.stopLoop();
+            }
         });
 
         this.bot.on('kicked', (reason) => {
@@ -607,8 +610,11 @@ export class Agent {
                 
                 this.memory_bank.rememberPlace('last_death_position', death_pos.x, death_pos.y, death_pos.z);
                 let death_pos_text = `x: ${death_pos.x.toFixed(2)}, y: ${death_pos.y.toFixed(2)}, z: ${death_pos.z.toFixed(2)}`;
-                let dimention = this.bot.game.dimension;
+                let dimention = this.bot.game?.dimension || 'unknown';
                 
+                this.actions.cancelResume();
+                this.actions.stop();
+
                 this.handleMessage('system', `You died at position ${death_pos_text} in the ${dimention} dimension with the final message: '${message}'. Your place of death is saved as 'last_death_position' if you want to return. Previous actions were stopped and you have respawned.`);
             }
         });
