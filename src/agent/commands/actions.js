@@ -121,7 +121,7 @@ export const actionsList = [
         },
         perform: runAsAction(async (agent, x, y, z, closeness) => {
             await skills.goToPosition(agent.bot, x, y, z, closeness);
-        })
+        }, true)
     },
     {
         name: '!searchForBlock',
@@ -136,7 +136,7 @@ export const actionsList = [
                 range = 32;
             }
             await skills.goToNearestBlock(agent.bot, block_type, 4, range);
-        })
+        }, true)
     },
     {
         name: '!searchForEntity',
@@ -261,7 +261,7 @@ export const actionsList = [
         },
         perform: runAsAction(async (agent, type, num) => {
             await skills.collectBlock(agent.bot, type, num);
-        }, false, 10) // 10 minute timeout
+        }, true, 10) // 10 minute timeout
     },
     {
         name: '!craftRecipe',

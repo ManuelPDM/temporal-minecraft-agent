@@ -16,5 +16,20 @@ export function createGoalExecutionActivities(agent) {
                 clearInterval(heartbeatInterval);
             }
         },
+
+        // Runs agent.handlePassiveThinking() — consolidates memory between LLM iterations.
+        // Returns { memoryUpdated: boolean }.
+        async executePassiveThinking() {
+            const heartbeatInterval = setInterval(() => heartbeat('Passive thinking in progress'), 15_000);
+            try {
+                await agent.handlePassiveThinking();
+                return { memoryUpdated: true };
+            } catch (err) {
+                console.warn('[Temporal] executePassiveThinking failed:', err.message);
+                return { memoryUpdated: false };
+            } finally {
+                clearInterval(heartbeatInterval);
+            }
+        },
     };
 }

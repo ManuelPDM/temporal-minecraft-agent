@@ -60,6 +60,15 @@ export class SelfPrompter {
         }
         console.log('starting self-prompt loop')
         this.loop_active = true;
+
+        // Delegate to Temporal GoalPursuitWorkflow when available
+        if (this.agent.temporalWorkflowHandle) {
+            await this.agent.temporalWorkflowHandle
+                .signal('startGoalPursuit', { goalId: 'self_prompt', description: this.prompt })
+                .catch(err => console.warn('[Temporal] startGoalPursuit signal failed:', err));
+            return;
+        }
+
         let no_command_count = 0;
         const MAX_NO_COMMAND = 3;
         while (!this.interrupt) {
@@ -111,6 +120,14 @@ export class SelfPrompter {
             return;
         console.log('stopping self-prompt loop')
         this.interrupt = true;
+        if (this.agent.temporalWorkflowHandle) {
+            await this.agent.temporalWorkflowHandle
+                .signal('stopGoalPursuit')
+                .catch(err => console.warn('[Temporal] stopGoalPursuit signal failed:', err));
+            this.loop_active = false;
+            this.interrupt = false;
+            return;
+        }
         while (this.loop_active) {
             await new Promise(r => setTimeout(r, 500));
         }

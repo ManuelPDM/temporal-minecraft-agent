@@ -23,6 +23,8 @@ export class Agent {
         this.last_sender = null;
         this.count_id = count_id;
         this._disconnectHandled = false;
+        this._msgQueue = Promise.resolve();
+        this._msgQueueDepth = 0;
 
         // Initialize components
         this.actions = new ActionManager(this);
@@ -68,6 +70,9 @@ export class Agent {
         const onDisconnect = (event, reason) => {
             if (this._disconnectHandled) return;
             this._disconnectHandled = true;
+            if (this.temporalWorkflowHandle) {
+                this.temporalWorkflowHandle.signal('agentDisconnected').catch(() => {});
+            }
             const { type } = handleDisconnection(this.name, reason);
             process.exit(1);
         };
@@ -153,6 +158,9 @@ export class Agent {
                 this.bot.chat(`/skin set URL ${this.prompter.profile.skin.model} ${this.prompter.profile.skin.path}`);
             else
                 this.bot.chat(`/skin clear`);
+            if (this.temporalWorkflowHandle) {
+                this.temporalWorkflowHandle.signal('agentConnected').catch(() => {});
+            }
         });
 
 		const spawnTimeoutDuration = settings.spawn_timeout;
@@ -177,6 +185,9 @@ export class Agent {
               
                 this._setupEventHandlers(save_data, init_message);
                 this.startEvents();
+                if (this.temporalWorkflowHandle) {
+                    this.temporalWorkflowHandle.signal('agentSpawned').catch(() => {});
+                }
               
                 if (!load_mem) {
                     if (settings.task) {
@@ -305,7 +316,17 @@ export class Agent {
         convoManager.endAllConversations();
     }
 
-    async handleMessage(source, message, max_responses=null) {
+    handleMessage(source, message, max_responses=null) {
+        this._msgQueueDepth++;
+        const resultPromise = this._msgQueue
+            .catch(() => {})
+            .then(() => this._handleMessageImpl(source, message, max_responses))
+            .finally(() => { this._msgQueueDepth--; });
+        this._msgQueue = resultPromise.catch(() => {});
+        return resultPromise;
+    }
+
+    async _handleMessageImpl(source, message, max_responses=null) {
         await this.checkTaskDone();
         if (!source || !message) {
             console.warn('Received empty message from', source);
@@ -428,6 +449,26 @@ export class Agent {
         }
 
         return used_command;
+    }
+
+    async handlePassiveThinking() {
+        if (this._msgQueueDepth > 0) return;
+        this._msgQueue = this._msgQueue.then(() =>
+            this.prompter.promptPassiveThinking(this.history.getHistory(), this.history.memory)
+                .then(({ memoryUpdate, turnsToRemove }) => {
+                    if (memoryUpdate) this.history.memory = memoryUpdate;
+                    if (turnsToRemove && turnsToRemove.length > 0) {
+                        const sorted = [...turnsToRemove].sort((a, b) => b - a);
+                        for (const idx of sorted) {
+                            if (idx >= 0 && idx < this.history.turns.length) {
+                                this.history.turns.splice(idx, 1);
+                            }
+                        }
+                    }
+                    this.history.save();
+                })
+                .catch(err => console.warn('[PassiveThinking] Error:', err))
+        );
     }
 
     async routeResponse(to_player, message) {
@@ -611,6 +652,9 @@ export class Agent {
         this.history.add('system', msg);
         this.bot.chat(code > 1 ? 'Restarting.': 'Exiting.');
         this.history.save();
+        if (this.temporalWorkflowHandle) {
+            this.temporalWorkflowHandle.signal('shutdown').catch(() => {});
+        }
         process.exit(code);
     }
     
@@ -621,6 +665,9 @@ export class Agent {
                 await this.history.add('system', `Task ended with score : ${res.score}`);
                 await this.history.save();
                 console.log('Task finished:', res.message);
+                if (this.temporalWorkflowHandle) {
+                    await this.temporalWorkflowHandle.signal('taskCompleted', { score: res.score, message: res.message }).catch(() => {});
+                }
                 this.killAll();
             }
         }

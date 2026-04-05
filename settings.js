@@ -58,6 +58,12 @@ const settings = {
   
     "log_all_prompts": false, // log ALL prompts to file
 
+    // Temporal workflow engine integration
+    "temporal_enabled": false, // set to true to connect to a running Temporal server
+    "temporal_address": "localhost:7233", // host:port of your Temporal frontend service
+    "temporal_namespace": "default", // Temporal namespace to use
+    "passive_thinking_interval": 10, // goal iterations between passive-thinking passes (0 = disabled)
+
 }
 
 export default settings;

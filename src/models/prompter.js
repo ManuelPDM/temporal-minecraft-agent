@@ -306,6 +306,28 @@ export class Prompter {
         return await this.vision_model.sendVisionRequest(messages, prompt, imageBuffer);
     }
 
+    async promptPassiveThinking(messages, currentMemory) {
+        await this.checkCooldown();
+        let prompt = this.profile.passive_thinking;
+        if (!prompt) return { memoryUpdate: null, turnsToRemove: [] };
+        prompt = prompt.replace('$MEMORY', currentMemory || '');
+        const resp = await this.chat_model.sendRequest(messages, prompt);
+        try {
+            let text = resp;
+            if (text?.includes('</think>')) text = text.split('</think>')[1];
+            // strip markdown code fences if present
+            text = text.replace(/```json\s*/i, '').replace(/```/g, '').trim();
+            const parsed = JSON.parse(text);
+            return {
+                memoryUpdate: typeof parsed.memoryUpdate === 'string' ? parsed.memoryUpdate.slice(0, 500) : null,
+                turnsToRemove: Array.isArray(parsed.turnsToRemove) ? parsed.turnsToRemove.filter(Number.isInteger) : [],
+            };
+        } catch (e) {
+            console.warn('[PassiveThinking] Failed to parse LLM response as JSON:', e.message);
+            return { memoryUpdate: null, turnsToRemove: [] };
+        }
+    }
+
     async promptGoalSetting(messages, last_goals) {
         // deprecated
         let system_message = this.profile.goal_setting;

@@ -8,7 +8,7 @@ import {
     proxyActivities,
 } from '@temporalio/workflow';
 
-const { executeLLMGoalIteration } = proxyActivities({
+const { executeLLMGoalIteration, executePassiveThinking } = proxyActivities({
     startToCloseTimeout: '5 minutes',
     heartbeatTimeout: '60 seconds',
     retry: {
@@ -35,6 +35,7 @@ export async function GoalPursuitWorkflow(input) {
         iterationCount: startIteration = 0,
         noCommandCount: startNoCommand = 0,
         cooldownMs = 2000,
+        passiveThinkingInterval = 10,
     } = input;
 
     const MAX_NO_COMMAND = 3;
@@ -45,6 +46,7 @@ export async function GoalPursuitWorkflow(input) {
     let paused = false;
     let interrupted = false;
     let lastUsedCommand = false;
+    let passiveThinkingCounter = 0;
 
     setHandler(interruptSignal, () => { interrupted = true; });
     setHandler(pauseSignal, () => { paused = true; });
@@ -78,6 +80,15 @@ export async function GoalPursuitWorkflow(input) {
             noCommandCount++;
         }
 
+        // Passive thinking: run every N iterations to consolidate memory
+        if (passiveThinkingInterval > 0) {
+            passiveThinkingCounter++;
+            if (passiveThinkingCounter >= passiveThinkingInterval) {
+                passiveThinkingCounter = 0;
+                await executePassiveThinking();
+            }
+        }
+
         // continueAsNew every 200 iterations to keep history manageable
         if (iterationCount >= 200 && !interrupted && noCommandCount < MAX_NO_COMMAND) {
             await continueAsNew({
@@ -86,6 +97,7 @@ export async function GoalPursuitWorkflow(input) {
                 iterationCount,
                 noCommandCount: 0,
                 cooldownMs,
+                passiveThinkingInterval,
             });
         }
 
