@@ -2,6 +2,10 @@
     "name": "mindcraft",
     "type": "module",
     "dependencies": {
+        "@temporalio/activity": "^1.11.0",
+        "@temporalio/client": "^1.11.0",
+        "@temporalio/worker": "^1.11.0",
+        "@temporalio/workflow": "^1.11.0",
         "@anthropic-ai/sdk": "^0.17.1",
         "@cerebras/cerebras_cloud_sdk": "^1.46.0",
         "@google/genai": "^1.15.0",

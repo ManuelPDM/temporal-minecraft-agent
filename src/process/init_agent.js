@@ -1,5 +1,6 @@
 import { Agent } from '../agent/agent.js';
 import { serverProxy } from '../agent/mindserver_proxy.js';
+import settings from '../agent/settings.js';
 import yargs from 'yargs';
 
 const args = process.argv.slice(2);
@@ -45,6 +46,26 @@ const argv = yargs(args)
         const agent = new Agent();
         serverProxy.setAgent(agent);
         await agent.start(argv.load_memory, argv.init_message, argv.count_id);
+
+        // Start Temporal worker + lifecycle workflow (guarded by settings flag)
+        if (settings.temporal_enabled) {
+            const { createAndRunWorker } = await import('../agent/temporal/worker.js');
+            const { worker, client, taskQueue } = await createAndRunWorker(agent, settings);
+
+            agent.temporalWorker = worker;
+            agent.temporalClient = client;
+
+            const workflowId = `agent-lifecycle-${agent.name}-${Date.now()}`;
+            const handle = await client.workflow.start('AgentLifecycleWorkflow', {
+                taskQueue,
+                workflowId,
+                args: [{ agentName: agent.name, sessionCount: 0 }],
+            });
+            agent.temporalWorkflowHandle = handle;
+            console.log(`[Temporal] Lifecycle workflow started: ${workflowId}`);
+
+            process.on('beforeExit', () => worker.shutdown());
+        }
     } catch (error) {
         console.error('Failed to start agent process:');
         console.error(error.message);
