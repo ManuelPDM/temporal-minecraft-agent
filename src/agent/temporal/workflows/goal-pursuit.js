@@ -8,7 +8,7 @@ import {
     proxyActivities,
 } from '@temporalio/workflow';
 
-const { executeLLMGoalIteration, executePassiveThinking } = proxyActivities({
+const { executeLLMGoalIteration, executePassiveThinking, notifyGoalComplete } = proxyActivities({
     startToCloseTimeout: '5 minutes',
     heartbeatTimeout: '60 seconds',
     retry: {
@@ -108,5 +108,11 @@ export async function GoalPursuitWorkflow(input) {
         if (!interrupted && noCommandCount < MAX_NO_COMMAND) {
             await sleep(cooldownMs);
         }
+    }
+
+    // Notify the agent process that the goal ended naturally (3 no-commands).
+    // This resets self_prompter state so it doesn't stay zombie-active.
+    if (!interrupted && noCommandCount >= MAX_NO_COMMAND) {
+        await notifyGoalComplete();
     }
 }

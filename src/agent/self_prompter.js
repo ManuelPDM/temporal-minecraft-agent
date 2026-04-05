@@ -10,6 +10,7 @@ export class SelfPrompter {
         this.prompt = '';
         this.idle_time = 0;
         this.cooldown = 2000;
+        this._goalPaused = false; // true while Temporal GoalPursuit is paused (mode running)
     }
 
     start(prompt) {
@@ -55,7 +56,15 @@ export class SelfPrompter {
 
     async startLoop() {
         if (this.loop_active) {
-            console.warn('Self-prompt loop is already active. Ignoring request.');
+            // If Temporal's GoalPursuit is paused (e.g. mode was running), resume it
+            if (this.agent.temporalWorkflowHandle && this._goalPaused) {
+                this._goalPaused = false;
+                await this.agent.temporalWorkflowHandle
+                    .signal('resumeGoalPursuit')
+                    .catch(err => console.warn('[Temporal] resumeGoalPursuit signal failed:', err));
+            } else {
+                console.warn('Self-prompt loop is already active. Ignoring request.');
+            }
             return;
         }
         console.log('starting self-prompt loop')
@@ -63,6 +72,7 @@ export class SelfPrompter {
 
         // Delegate to Temporal GoalPursuitWorkflow when available
         if (this.agent.temporalWorkflowHandle) {
+            this._goalPaused = false;
             await this.agent.temporalWorkflowHandle
                 .signal('startGoalPursuit', { goalId: 'self_prompt', description: this.prompt })
                 .catch(err => console.warn('[Temporal] startGoalPursuit signal failed:', err));
@@ -109,6 +119,20 @@ export class SelfPrompter {
                 this.idle_time = 0;
             }
         }
+        else if (this.state === ACTIVE && this._goalPaused && !this.interrupt
+                 && this.agent.temporalWorkflowHandle) {
+            // Temporal GoalPursuit is paused — resume once the bot is idle again
+            if (this.agent.isIdle())
+                this.idle_time += delta;
+            else
+                this.idle_time = 0;
+
+            if (this.idle_time >= this.cooldown) {
+                console.log('Resuming self-prompting...');
+                this.startLoop(); // sends resumeGoalPursuit
+                this.idle_time = 0;
+            }
+        }
         else {
             this.idle_time = 0;
         }
@@ -121,10 +145,14 @@ export class SelfPrompter {
         console.log('stopping self-prompt loop')
         this.interrupt = true;
         if (this.agent.temporalWorkflowHandle) {
-            await this.agent.temporalWorkflowHandle
-                .signal('stopGoalPursuit')
-                .catch(err => console.warn('[Temporal] stopGoalPursuit signal failed:', err));
-            this.loop_active = false;
+            // Pause the GoalPursuit rather than killing it — prevents a new child
+            // from being spawned on every mode interrupt (item_collecting, hunting, etc.)
+            if (this.loop_active && !this._goalPaused) {
+                this._goalPaused = true;
+                await this.agent.temporalWorkflowHandle
+                    .signal('pauseGoalPursuit')
+                    .catch(err => console.warn('[Temporal] pauseGoalPursuit signal failed:', err));
+            }
             this.interrupt = false;
             return;
         }
@@ -138,7 +166,17 @@ export class SelfPrompter {
         this.interrupt = true;
         if (stop_action)
             await this.agent.actions.stop();
-        this.stopLoop();
+        // With Temporal, stopLoop() only pauses — we need a hard stop here
+        if (this.agent.temporalWorkflowHandle && this.loop_active) {
+            await this.agent.temporalWorkflowHandle
+                .signal('stopGoalPursuit')
+                .catch(err => console.warn('[Temporal] stopGoalPursuit signal failed:', err));
+            this.loop_active = false;
+            this._goalPaused = false;
+            this.interrupt = false;
+        } else {
+            this.stopLoop();
+        }
         this.state = STOPPED;
     }
 
@@ -151,6 +189,17 @@ export class SelfPrompter {
 
     shouldInterrupt(is_self_prompt) { // to be called from handleMessage
         return is_self_prompt && (this.state === ACTIVE || this.state === PAUSED) && this.interrupt;
+    }
+
+    // Called by the GoalPursuit Temporal activity when the workflow exits
+    // naturally (3 consecutive no-command responses).
+    onGoalPursuitEnded() {
+        this.loop_active = false;
+        this._goalPaused = false;
+        this.interrupt = false;
+        this.state = STOPPED;
+        console.log('Goal pursuit ended — auto-prompting stopped.');
+        this.agent.openChat('Agent did not use command in the last 3 auto-prompts. Stopping auto-prompting.');
     }
 
     handleUserPromptedCmd(is_self_prompt, is_action) {

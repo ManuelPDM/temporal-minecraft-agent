@@ -35,6 +35,13 @@ export function createGoalExecutionActivities(agent) {
             }
         },
 
+        // Called when GoalPursuit exits naturally (3 no-command responses).
+        // Resets the self_prompter so it doesn't linger in a zombie loop_active=true state.
+        async notifyGoalComplete() {
+            agent.self_prompter.onGoalPursuitEnded();
+            return {};
+        },
+
         // Runs agent.handlePassiveThinking() — consolidates memory between LLM iterations.
         // Returns { memoryUpdated: boolean }.
         async executePassiveThinking() {
