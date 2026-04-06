@@ -1,4 +1,4 @@
-import { History } from './history.js';
+kimport { History } from './history.js';
 import { Coder } from './coder.js';
 import { VisionInterpreter } from './vision/vision_interpreter.js';
 import { Prompter } from '../models/prompter.js';
@@ -50,6 +50,11 @@ export class Agent {
         let save_data = null;
         if (load_mem) {
             save_data = this.history.load();
+            
+            // MemoryBank data is now loaded via history.load() which restores memory_bank field
+            console.log('MemoryBank restored from saved state');
+        } else {
+            console.log('Starting with fresh MemoryBank');
         }
         let taskStart = null;
         if (save_data) {

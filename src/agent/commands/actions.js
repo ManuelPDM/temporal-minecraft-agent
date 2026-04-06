@@ -174,11 +174,113 @@ export const actionsList = [
         perform: runAsAction(async (agent, name) => {
             const pos = agent.memory_bank.recallPlace(name);
             if (!pos) {
-            skills.log(agent.bot, `No location named "${name}" saved.`);
-            return;
+                skills.log(agent.bot, `No location named "${name}" saved.`);
+                return;
             }
-            await skills.goToPosition(agent.bot, pos[0], pos[1], pos[2], 1);
+            await skills.goToPosition(agent.bot, pos.x, pos.y, pos.z, 1);
         })
+    },
+    // Chest tracking commands
+    {
+        name: '!rememberChest',
+        description: 'Register a chest at current location with optional initial contents.',
+        params: {'chest_id': { type: 'string', description: 'Unique identifier for this chest.' }},
+        perform: async function (agent, chest_id) {
+            const pos = agent.bot.entity.position;
+            agent.memory_bank.rememberChest(chest_id, pos.x, pos.y, pos.z);
+            return `Chest registered as "${chest_id}" at position (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}).`;
+        }
+    },
+    {
+        name: '!updateChestContents',
+        description: 'Update the stored contents of a chest.',
+        params: {'chest_id': { type: 'string', description: 'The chest identifier.' }, 'contents_json': { type: 'string', description: 'JSON object mapping item names to counts (e.g., {"diamond": 5, "iron_ingot": 10})' }},
+        perform: async function (agent, chest_id, contents_json) {
+            try {
+                const newContents = JSON.parse(contents_json);
+                agent.memory_bank.updateChestContents(chest_id, newContents);
+                return `Updated contents for chest "${chest_id}".`;
+            } catch (err) {
+                return `Error parsing contents JSON: ${err.message}`;
+            }
+        }
+    },
+    {
+        name: '!recallChest',
+        description: 'Get the position and contents of a registered chest.',
+        params: {'chest_id': { type: 'string', description: 'The chest identifier.' }},
+        perform: async function (agent, chest_id) {
+            const chestData = agent.memory_bank.recallChest(chest_id);
+            if (!chestData) {
+                return `No chest registered with ID "${chest_id}".`;
+            }
+            const posText = `${chestData.position.x.toFixed(1)}, ${chestData.position.y.toFixed(1)}, ${chestData.position.z.toFixed(1)}`;
+            const contentsText = Object.entries(chestData.contents).map(([item, count]) => `${count}x ${item}`).join(', ');
+            return `Chest "${chest_id}" at [${posText}] contains: ${contentsText || 'empty'}.`;
+        }
+    },
+    {
+        name: '!forgetChest',
+        description: 'Remove a chest from memory.',
+        params: {'chest_id': { type: 'string', description: 'The chest identifier to forget.' }},
+        perform: async function (agent, chest_id) {
+            agent.memory_bank.forgetChest(chest_id);
+            return `Chest "${chest_id}" has been forgotten.`;
+        }
+    },
+    // Resource cache commands
+    {
+        name: '!cacheResource',
+        description: 'Record a resource location (e.g., forest, ore deposit).',
+        params: {'resource_type': { type: 'string', description: 'Type of resource (e.g., "oak_forest", "iron_ore").' }, 'metadata_json': { type: 'string', description: 'Optional JSON metadata object (e.g., {"reliability": 0.9})' }},
+        perform: async function (agent, resource_type, metadata_json = '{}') {
+            try {
+                const metadata = JSON.parse(metadata_json);
+                const pos = agent.bot.entity.position;
+                agent.memory_bank.cacheResourceLocation(resource_type, pos.x, pos.y, pos.z, metadata);
+                return `Resource "${resource_type}" cached at position (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}).`;
+            } catch (err) {
+                return `Error parsing metadata JSON: ${err.message}`;
+            }
+        }
+    },
+    {
+        name: '!recallResource',
+        description: 'Get the most recent known location for a resource type.',
+        params: {'resource_type': { type: 'string', description: 'The resource type to look up.' }},
+        perform: async function (agent, resource_type) {
+            const cache = agent.memory_bank.recallResourceCache(resource_type);
+            if (!cache) {
+                return `No cached location found for resource "${resource_type}".`;
+            }
+            const posText = `${cache.position.x.toFixed(1)}, ${cache.position.y.toFixed(1)}, ${cache.position.z.toFixed(1)}`;
+            return `Resource "${resource_type}" last seen at [${posText}]. Last visited: ${new Date(cache.lastVisited).toLocaleString()}.`;
+        }
+    },
+    // Danger zone commands
+    {
+        name: '!recordDangerZone',
+        description: 'Mark a dangerous area (mob spawns, lava, etc.).',
+        params: {'zone_type': { type: 'string', description: 'Type of danger (e.g., "mob_spawns", "lava_pool").' }, 'risk_level': { type: 'string', description: 'Risk level: "low", "medium", or "high".', domain: ['low', 'medium', 'high'] }},
+        perform: async function (agent, zone_type, risk_level = 'medium') {
+            const pos = agent.bot.entity.position;
+            agent.memory_bank.recordDangerZone(zone_type, pos.x, pos.y, pos.z, risk_level);
+            return `Danger zone "${zone_type}" recorded at [${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}] with risk level: ${risk_level}.`;
+        }
+    },
+    {
+        name: '!nearbyDangers',
+        description: 'List danger zones within a radius of current position.',
+        params: {'radius': { type: 'int', description: 'Search radius in blocks (default 64).', default: 64, domain: [1, Number.MAX_SAFE_INTEGER] }},
+        perform: async function (agent, radius = 64) {
+            const pos = agent.bot.entity.position;
+            const nearbyZones = agent.memory_bank.getDangerZonesNearby(pos, radius);
+            if (nearbyZones.length === 0) {
+                return `No danger zones found within ${radius} blocks.`;
+            }
+            const zoneText = nearbyZones.map(z => `${z.zoneType} at [${z.position.x.toFixed(1)}, ${z.position.y.toFixed(1)}, ${z.position.z.toFixed(1)}] (risk: ${z.riskLevel})`).join('; ');
+            return `Nearby danger zones within ${radius} blocks: ${zoneText}.`;
+        }
     },
     {
         name: '!givePlayer',
