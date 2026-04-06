@@ -17,6 +17,10 @@ export async function init(host_public=false, port=8080, auto_open_ui=true) {
     mindserver = createMindServer(host_public, port);
     mindserver_port = port;
     connected = true;
+    
+    // Wait for server to bind before returning
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     if (auto_open_ui) {
         setTimeout(() => {
             // check if browser listener is already open
