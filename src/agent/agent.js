@@ -1,4 +1,4 @@
-kimport { History } from './history.js';
+import { History } from './history.js';
 import { Coder } from './coder.js';
 import { VisionInterpreter } from './vision/vision_interpreter.js';
 import { Prompter } from '../models/prompter.js';
