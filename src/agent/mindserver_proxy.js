@@ -22,18 +22,44 @@ class MindServerProxy {
         if (this.connected) return;
         
         this.name = name;
-        this.socket = io(`http://localhost:${port}`);
+        let retries = 0;
+        const maxRetries = 30; // ~15 seconds total wait time
+        const baseDelay = 500;
 
-        await new Promise((resolve, reject) => {
-            this.socket.on('connect', resolve);
-            this.socket.on('connect_error', (err) => {
-                console.error('Connection failed:', err);
-                reject(err);
-            });
-        });
+        while (!this.socket && retries < maxRetries) {
+            try {
+                this.socket = io(`http://localhost:${port}`);
 
-        this.connected = true;
-        console.log(name, 'connected to MindServer');
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        this.socket.off('connect', resolve);
+                        this.socket.off('connect_error', reject);
+                        reject(new Error(`Connection timeout after ${timeout / 1000} seconds`));
+                    }, 5000);
+
+                    this.socket.on('connect', () => {
+                        clearTimeout(timeout);
+                        resolve();
+                    });
+
+                    this.socket.on('connect_error', (err) => {
+                        console.warn(`Connection attempt ${retries + 1}/${maxRetries} failed:`, err.message);
+                        retries++;
+                        if (retries >= maxRetries) reject(err);
+                        else setTimeout(() => {}, Math.pow(2, retries) * baseDelay); // Exponential backoff
+                    });
+                });
+
+                this.connected = true;
+                console.log(name, 'connected to MindServer');
+                return;
+            } catch (err) {
+                this.socket = null;
+                retries++;
+                if (retries >= maxRetries) throw err;
+                await new Promise(resolve => setTimeout(resolve, Math.pow(2, retries) * baseDelay));
+            }
+        }
 
         this.socket.on('disconnect', () => {
             console.log('Disconnected from MindServer');
